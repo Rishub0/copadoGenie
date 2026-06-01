@@ -1,0 +1,904 @@
+0:00
+our today's video. So today I will show
+0:01
+you how you can deploy your changes for
+0:03
+one environment to another till the
+0:04
+production. So let's discuss on a use
+0:06
+case that we will cover in this video.
+0:08
+So our first use case is we need to
+0:09
+create a new custom object and fields
+0:11
+and object name will be copied to demo
+0:12
+and we'll create a custom field also
+0:13
+over there in this object that is
+0:15
+description. I just choose a simple use
+0:16
+case to make you understand end to end
+0:18
+process. So let's start how you can
+0:19
+approach this use case. So the first
+0:21
+step is we need to create a user story.
+0:22
+So for that let me open my copper.org.
+0:27
+So in most of the cases you will get
+0:28
+user stories automatically created by
+0:30
+your business and this team or someone
+0:31
+else like they create user stories in
+0:33
+project management tools like Jira and
+0:34
+others and they will automatically get
+0:35
+seen with the cop or you can directly
+0:37
+create user stories here in copo as well
+0:39
+but for now we will create user story
+0:40
+here because in copo without user
+0:42
+history story we cannot deploy anything.
+0:44
+So this will be the our first step. So
+0:46
+let me click on this new user story. So
+0:49
+let's enter meaningful title.
+0:53
+[Music]
+0:56
+Next we have project and this is the
+0:58
+required field because our pipeline is
+0:59
+directly connected to the project. So we
+1:01
+should always map our user stories with
+1:02
+the project. Next important field we
+1:04
+have credentials. Credentials means
+1:06
+where we are going to develop this user
+1:07
+story. So here we are telling that we
+1:09
+will deploy this user story in the day
+1:10
+one or and all other fields are
+1:12
+optional. So for now we can leave them
+1:14
+and click on save.
+1:16
+So this is how you can create user story
+1:17
+in Kadu. So after you can see the
+1:19
+details of user story here like what is
+1:21
+the title, what is the number and this
+1:23
+is the path. So once you select
+1:24
+credentials on the basis of that this
+1:26
+part is automatically get created
+1:28
+because in pipeline we have already
+1:29
+defined this flow like how our changes
+1:30
+will go further and if you want to edit
+1:32
+this page layout for this user story in
+1:34
+that case you can easily do this one
+1:35
+that you want to show credentials and uh
+1:37
+all other fields over here right now
+1:38
+they are in different different types
+1:39
+but if you want to have them on a single
+1:40
+screen in that case you can easily
+1:41
+update this page layout and add a second
+1:44
+step let me log into day one sandbox so
+1:46
+we can create these objects and fields
+1:47
+over there. So let me click on this day
+1:49
+one and on this credential record page
+1:51
+you will find a button open or So let me
+1:53
+click on this.
+1:56
+So this is how you can directly open
+1:57
+your O from the credentials page. Now
+1:59
+let me open setup. Click on object
+2:02
+manager. Click on create.
+2:05
+So let me enter the name of the object
+2:06
+that is
+2:08
+cover.
+2:11
+[Music]
+2:14
+So this is how I have created a custom
+2:15
+object. Now let me add some fields.
+2:18
+Click on new.
+2:19
+[Music]
+2:33
+Let's have only one field for now. So
+2:35
+this is how I have created my object and
+2:36
+field and I'm done with my changes. So
+2:39
+let me open my user history again.
+2:43
+Now everything is fine till now. So I
+2:45
+want to attach my changes with this user
+2:46
+story. So for that let me click on this
+2:48
+coverage changes
+2:50
+and this is our commit changes screen
+2:51
+and here you can see the grid of all the
+2:53
+metadata like whatever metadata you have
+2:55
+in your or so you can find all in this
+2:56
+grid and if you're not able to find out
+2:58
+newly created metadata in this grid then
+3:00
+you can click on this refresh receive
+3:01
+changes. So what it will do it will make
+3:03
+a call out to your org and we face newly
+3:05
+created metadata from there and if you
+3:06
+want to create like when last metadata
+3:08
+has been refilled that you can find here
+3:10
+on bottom of the grid. Okay. And in this
+3:13
+plate you have like lots of options to
+3:14
+fill out your metadata. Like you can
+3:16
+fill out with the help of name with the
+3:18
+help of metadata type plus modify by
+3:20
+modify date by and date. And for now I
+3:23
+can see my object here in front of me.
+3:25
+So this is the name of my object and
+3:27
+this is the metadata type. So let me
+3:28
+select this object. And if I want to see
+3:31
+all the selected meta getter in that
+3:32
+case I can click over here on the
+3:33
+selected metadata.
+3:35
+So whatever component you have selected
+3:37
+those will be visible over here. And
+3:38
+whatever components you want to commit
+3:39
+for this restory story you can select
+3:41
+from here and once you are done with the
+3:43
+selection you can change the ges over
+3:45
+here if you want and you can click on
+3:46
+the commit changes. So as of now I'm
+3:48
+just going to commit this cop object. So
+3:50
+let me click on the commit changes and
+3:52
+this is going to take us on a screen
+3:53
+that shows what's happening in the real
+3:55
+time and you are not required to stay on
+3:57
+this screen. If you want to work on
+3:59
+something else then you can click on
+4:00
+this go back and work and this will take
+4:03
+some time. So in back end it is going to
+4:04
+create a new present branch out of
+4:06
+master branch and then it is going to
+4:07
+compare the files from what we have
+4:09
+selected on the user story to what they
+4:11
+exist on the master branch and going to
+4:13
+commit those changes to our future
+4:14
+branch. So once it will completed I'll
+4:16
+open kit I will show you that future
+4:17
+branch.
+4:19
+So the commit process has been
+4:21
+completed. So as I have explained over
+4:22
+there like in the commit copper creates
+4:24
+a new feature branch with this user
+4:25
+story and the source of that fuser
+4:27
+branch is master branch and whatever
+4:28
+files and components we are committing
+4:29
+with this user story. Cop compare those
+4:31
+components and files with the master
+4:32
+branch and going to commit the changes
+4:33
+into that feature branch. And now if I
+4:35
+click on this build tab then I can see
+4:37
+the selected meta here also. So this is
+4:40
+another way to double check which
+4:41
+components we are selecting for this
+4:42
+restory and in case for example we will
+4:44
+created for those selected components
+4:45
+console. So now let's open our G launch
+4:47
+and see the latest commit over there. So
+4:49
+for that you need to click on this view
+4:51
+in G. So let me click on this. So it
+4:54
+will open a G interface in front of us.
+4:55
+And our grant is selected over here. And
+4:58
+if you want to see our latest commit in
+5:00
+that case we can click on this. So over
+5:02
+here we can take a look of all the
+5:03
+computed files like over here. Right now
+5:05
+I have committed only one file that is
+5:07
+my object. But if you have multiple
+5:08
+files and if you have updated any files
+5:10
+that you can track over here. Okay. So
+5:13
+now let me come back to my covered on.
+5:15
+Now we have committed our changes with
+5:16
+the user story. So now let me check on
+5:17
+this deliver tab. So here we have a
+5:19
+couple of options like ready to promote
+5:20
+and promote and deploy. So if everything
+5:22
+is good and if you want to promote this
+5:24
+is restore to the next environment. So
+5:25
+for that you need to check this ready to
+5:27
+promote check marks. But before that let
+5:28
+me open my pipeline.
+5:32
+So this is my pipeline and currently you
+5:34
+don't see any numbers over here with the
+5:36
+day one odd. Now let me go back to my
+5:37
+user story and check this ready to check
+5:39
+box and see what will happen on our
+5:40
+pipeline. So I have checked this ready
+5:42
+for checkbox. So now let me go back to
+5:44
+my pipeline and check this. So if you
+5:47
+remember before we had cow zero here but
+5:49
+now after selecting ready to promote you
+5:51
+can see one is here. So basically this
+5:53
+is the indicator for the release manager
+5:54
+like this is completed by the developer
+5:56
+and ready to deploy to the next
+5:57
+environment. So as of now we have marked
+5:59
+only one user story to ready to promote.
+6:01
+But if you have marked multiple user
+6:02
+stories then multiple accounts will be
+6:03
+here like if you have marked five user
+6:05
+stories then five will be here. So now
+6:07
+let's see how you can push this user
+6:08
+story to the next environment. So for
+6:10
+that you need to click on this one. So
+6:12
+in this screen all the ready to promote
+6:14
+user stories will be visible and some of
+6:16
+them you can select which one you want
+6:17
+to deploy and as of now we have only one
+6:19
+user story and after selecting the user
+6:20
+stories we just need to click on this
+6:22
+promote and deploy and it is going to
+6:24
+take us on a new screen and now it is
+6:26
+going to create the promotion branch out
+6:27
+of the destination branch and in our
+6:28
+case this branch with the UAT and merge
+6:30
+the future branch into the promotion
+6:31
+branch and then create the package and
+6:32
+deploy to the next environment and it is
+6:34
+not required to stay on this screen but
+6:36
+from here you can see the live
+6:37
+deployment status or you can also go to
+6:39
+the promotion record. So let me click on
+6:40
+this.
+6:42
+So on this promotion record you can see
+6:44
+which branch is going to merge into the
+6:45
+promotion branch and included into the
+6:46
+deployment. So on the promotion record
+6:48
+you can see all the selected user
+6:50
+storage and and here you can see the
+6:52
+deployment record. So let me click on
+6:53
+taste to see the realtime deployment
+6:54
+status.
+6:57
+So here you can see deployment stat is
+6:59
+completed and completed 100% and because
+7:02
+we had only one component in our
+7:03
+deployment so it was done quickly. But
+7:04
+let's say you have lots of components in
+7:06
+that case it will take some time and you
+7:07
+want to know the real time status in
+7:08
+that case you can click on this view
+7:09
+deployment status
+7:11
+over here you can see the real time
+7:13
+status of component. So this is how you
+7:14
+can check real time view status on
+7:16
+machines
+7:17
+and here you can see the steps included
+7:19
+in the deployment but as of now we have
+7:21
+only one step that is keep motion but in
+7:23
+real time applications you can have
+7:24
+multiple steps over here like post
+7:26
+deployment and pre-eployment steps like
+7:27
+you want to take an upwell before the
+7:29
+deployment and after deployment you want
+7:30
+to perform some manual operations so
+7:31
+those kind of steps also you can include
+7:33
+with your pipeline. So I will show you
+7:34
+those steps sometime in future videos.
+7:36
+And you can see the deployment details
+7:37
+over here like what are the component
+7:39
+for integrating that and if you want to
+7:41
+demotion branch then you can click on
+7:42
+this and for the deployment project you
+7:44
+can click on this and if we click on
+7:46
+this view result in that case you will
+7:47
+find the deployment project. Okay. Now
+7:50
+let me go back to my user story and
+7:51
+refresh.
+7:54
+Now after successful deployment you will
+7:56
+see some changes over here on the user
+7:57
+story. So if you check the credentials
+7:58
+then credentials automatically get
+8:00
+updated to the UAT along with
+8:01
+environment. And if you see this path
+8:03
+then path also get updated to the UAT
+8:04
+and it will deploy further in that case
+8:06
+it will be played out to the production
+8:07
+and why it leads to the UAT only just
+8:09
+because our user store is connected to
+8:10
+the pipeline and in our pipeline we have
+8:12
+defined next stage is the u now let me
+8:15
+log into UA and check our object there
+8:21
+[Music]
+8:26
+let me open object manager
+8:30
+let me to kara.
+8:32
+So you can see our object is here now.
+8:34
+So let me open it
+8:36
+and let me open field set relationship.
+8:39
+If you notice here in the fields we do
+8:41
+not have our custom field that is
+8:42
+description. Why that is not here?
+8:44
+Because why committing we have selected
+8:45
+only that object and whenever we are
+8:46
+going to commit only object in that case
+8:48
+only standard field will be committed
+8:50
+along with the object and whatever
+8:51
+custom fields we have with that object
+8:52
+we need to separately select them as
+8:54
+well. And this is not about the fields
+8:55
+only. Whatever other components we have
+8:57
+that page like page layouts and record
+8:58
+types and various rules like any other
+9:00
+thing if you have with that object in
+9:01
+that case you need to select those as
+9:02
+well along with object while committing
+9:04
+the meta changes. Now how that you can
+9:06
+win here that is a different scenario I
+9:07
+will show in the next video. So for now
+9:09
+let me go back to the pipeline manager.
+9:12
+So now with the UAT you can see the
+9:14
+green icon. This means deployment has
+9:15
+been completed successfully in UAT.
+9:17
+Okay. And another important thing that
+9:18
+you can see this backward error count
+9:20
+over here. So what does it means? This
+9:22
+is saying like one uses to be promoted
+9:24
+and deployed to the next environment and
+9:25
+this branch does not have those metal
+9:27
+changes and from here you can push all
+9:28
+those metadata into this org and this
+9:30
+term is called B promotion in Kado. So
+9:32
+with the help of B promotion we can sync
+9:34
+our lower level OS with the other orgs
+9:36
+and if you want to make promote then you
+9:37
+need to click on this and from here this
+9:40
+is the same process that we have
+9:40
+followed to promote our user story to
+9:42
+deploy in the UAT like you can select
+9:44
+whatever user stories you want to
+9:45
+promote and you can click on promote and
+9:47
+deploy. Okay. And now if you see we do
+9:49
+not have any user story pending to
+9:50
+promote to the production. So let's open
+9:52
+our user story again.
+9:55
+So I hope now our changes in the UAT and
+9:56
+clear June like our UAT is done and now
+9:58
+we are assigned to deploy to the
+10:00
+production. So for that if you go in the
+10:01
+deliver tab again. So you can notice
+10:03
+here this checkbox is unchecked
+10:05
+automatically. So when deployment is
+10:06
+completed into the one environment in
+10:07
+that case automatically uncheck this one
+10:09
+and again if you want to deploy to the
+10:10
+next environment in that case we can
+10:12
+check it again. So here we have two
+10:13
+things ready to promote and promote and
+10:15
+deploy. So ready to promote means we are
+10:16
+just saying like our user story is ready
+10:18
+to promote and that user story will be
+10:19
+visible in the pipeline and if you're
+10:21
+checking this promote and deploy
+10:23
+checkbox in that case promotion and
+10:24
+deployment can be started instantiate.
+10:26
+So if you have a requirement where we
+10:27
+need to deploy our user story directly
+10:29
+in that case we can select promote and
+10:30
+deploy as we can select ready to
+10:31
+promote. So now let me select this
+10:33
+promote and deploy and click on save.
+10:38
+So in the background promotion and
+10:39
+deployment record has automatically get
+10:40
+created and deployment get started. So
+10:42
+let's verify that one. So let me take on
+10:44
+this promotions.
+10:46
+[Music]
+10:49
+So you can see over here this new
+10:50
+permission record has been created and
+10:52
+once I open this one now you can see
+10:54
+from U8 to production and rest all the
+10:56
+things are same like over here you can
+10:58
+check the whatever user stories has been
+10:59
+deployed and if you want to check the
+11:01
+deployment status then you can click on
+11:02
+here.
+11:06
+Okay now let me go back to pipeline
+11:08
+manager.
+11:11
+Now you can see the green icon with the
+11:12
+production as well. This means our user
+11:14
+story has been deployed to the
+11:15
+production as well. So let me open my
+11:16
+user story again.
+11:19
+And now if you notice in this path then
+11:20
+everything is green. It means our user
+11:22
+story deployed to the all the
+11:23
+environments. Okay. You can find that
+11:25
+object in the production as well. And
+11:26
+now let's see what is next.
+11:29
+Okay. So here in this window we have
+11:31
+seen two new terms future branch and
+11:32
+promotion branch. So let's discuss about
+11:34
+them. So when we going to commit
+11:36
+changing us story
+11:38
+branch for that user story and all the
+11:40
+subsequent commits for the new user
+11:42
+story will be in the same branch means
+11:43
+let's say you want to add more metadata
+11:45
+after committing first time for the same
+11:46
+user story. So when you will commit
+11:48
+changes again in that case there won't
+11:49
+be any new branch for the same user
+11:51
+story and changes will be committed into
+11:52
+the same branch that was created on
+11:54
+first time. So we can say cap create a
+11:56
+future branch for each user story and
+11:58
+the source of future branch is the main
+11:59
+branch. So we can say future branch
+12:01
+created out of main branch. So now the
+12:03
+question is why copper creates future
+12:05
+branch for every user story. Then we can
+12:07
+say due to this nature provides more
+12:09
+flexibility because we can deploy our
+12:10
+metadata as the user stories. For
+12:12
+example, let's say you have five user
+12:14
+stories ready to deploy. But your
+12:15
+business wants only two to be deployed.
+12:17
+In the case in cop you can select only
+12:19
+those two user stories and deploy to the
+12:20
+next environment. So due to these
+12:22
+different different branches for each
+12:23
+user story cop will easily identify the
+12:25
+changes for those user stories. Okay.
+12:27
+Next we have promotion branch. So we can
+12:29
+say when we are running a promotion in
+12:31
+capado cap t promotion branch out of
+12:33
+destination branch and after that merge
+12:36
+over the fel branches and create a
+12:37
+package to deploy on the destination
+12:38
+branch. For example you want to deploy
+12:40
+two user stories then cop will take
+12:42
+those f branches of those user stories
+12:44
+and extract the changes and deploy them
+12:45
+to the destination. So in the set we can
+12:47
+say future branch will be created for
+12:48
+every user story and promotion branch
+12:50
+will be created for every promotion or
+12:51
+deployment. Okay. So that's it in this
+12:53
+video and we have seen like how you can
+12:54
+deploy your changes with cop using point
+12:56
+and click tool. So in this video I took
+12:58
+a very simple example to make you
+12:59
+understand but in next video I will
+13:01
+cover more scenarios to deploy like how
+13:02
+you can deploy permissions f layouts and
+13:05
+how you can deploy multiple metadata and
+13:06
+how you can deploy AEX classes with
+13:08
+multiple scenarios and if you have any
+13:10
+kind of question till now then please
+13:11
+feel free to ask me here in the chat or
+13:13
+you can find my email id in the
+13:14
+description. So please like this video
+13:16
+and subscribe my YouTube channel. Thank
+13:17
+you for watching this. I will see you in
+13:19
+the next video.
