@@ -1,4 +1,3 @@
-# copadoGenie
 # Copado Genie — Agentic DevOps CLI
 
 ## Overview
