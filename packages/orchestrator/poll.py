@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 from copado_api.client import CopadoClient, JobStatus
 
-TERMINAL_STATUSES = {"Completed", "Completed with Errors", "Failed"}
+TERMINAL_STATUSES = {"Completed", "Completed with Errors", "Failed", "Successful", "Succeeded"}
 
 DEFAULT_INTERVAL_S = 5
 DEFAULT_TIMEOUT_S = 600   # 10 minutes

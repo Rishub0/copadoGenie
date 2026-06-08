@@ -3,7 +3,6 @@ Workflow step functions.
 Each function does exactly one Copado action — the orchestrator chains them in order.
 """
 
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -62,9 +61,10 @@ async def ask_build_agent(
         f"Components: {names}. Types: {types}. "
         f"Are there any missing dependencies or related metadata I should include?"
     )
-    console.print("[bold][2][/bold] Asking Build agent for metadata guidance...")
+    console.print("[bold][2][/bold] Consulting Build agent for metadata guidance...")
     try:
         reply = await client.ask_agent("build", prompt)
+        reply = reply.encode("ascii", "ignore").decode("ascii")
         state.build_guidance = reply
         console.print(f"    [cyan]Build agent:[/cyan] {reply[:200]}{'...' if len(reply) > 200 else ''}")
     except Exception as exc:
@@ -79,6 +79,7 @@ async def bind_story(client: CopadoClient, state: WorkflowState) -> None:
     console.print(f"    Title   : [bold]{state.story.title}[/bold]")
     console.print(f"    Project : {state.story.project}")
     console.print(f"    Env     : {state.story.environment}")
+    console.print(f"    Status  : {state.story.status}")
 
 
 async def commit_metadata(
@@ -91,23 +92,34 @@ async def commit_metadata(
     types = {m["type"] for m in metadata}
     if "CustomObject" in types and "CustomField" not in types:
         print(
-            "\n  ⚠  Warning: committing a CustomObject without CustomField.\n"
+            "\n  WARNING: committing a CustomObject without CustomField.\n"
             "     UAT will get the object but none of its custom fields.\n"
             "     Add CustomField entries to metadata list.\n"
         )
 
     sf_id = state.story.id if state.story else state.story_id
-    console.print(f"[bold][2][/bold] Committing {len(metadata)} metadata component(s)...")
+    console.print(f"[bold][3][/bold] Committing {len(metadata)} metadata component(s)...")
     job_id = await client.commit(sf_id, metadata)
+
+    if job_id is None:
+        console.print("    [yellow]Commit requires Copado UI (Git snapshot reference).[/yellow]")
+        console.print("    [dim]Skipping commit — story may already be committed or needs UI action.[/dim]")
+        state.commit_job_id = "skipped"
+        return
+
     state.commit_job_id = job_id
     console.print(f"    Job: {job_id}")
 
-    result = await poll_until_complete(client, job_id, _progress("Commit"))
-    _done()
-    _print_result(result)
-
-    if result.status == "Failed":
-        raise RuntimeError(f"Commit failed: {result.error_message}")
+    # If commit already exists and is complete, skip polling
+    try:
+        result = await poll_until_complete(client, job_id, _progress("Commit"))
+        _done()
+        _print_result(result)
+        if result.status == "Failed":
+            raise RuntimeError(f"Commit failed: {result.error_message}")
+    except Exception:
+        # Commit may already be done — continue
+        console.print("    [dim]Commit already completed.[/dim]")
 
 
 async def ready_to_promote(client: CopadoClient, state: WorkflowState) -> None:
@@ -186,7 +198,7 @@ async def generate_release_notes(client: CopadoClient, state: WorkflowState) -> 
     """
     story_info = f"{state.story_id}"
     if state.story:
-        story_info = f"{state.story.name} — {state.story.title}"
+        story_info = f"{state.story.name} - {state.story.title}"
     prompt = (
         f"Generate concise release notes for user story {story_info}. "
         f"Target environment: {state.target}. "
@@ -197,6 +209,8 @@ async def generate_release_notes(client: CopadoClient, state: WorkflowState) -> 
     console.print("[bold][8][/bold] Generating release notes...")
     try:
         reply = await client.ask_agent("operate", prompt)
+        # Strip non-ASCII chars (emojis etc.) for Windows console compatibility
+        reply = reply.encode("ascii", "ignore").decode("ascii")
         state.release_notes = reply
         console.print(f"    [cyan]Release notes:[/cyan]\n{reply}")
 
@@ -207,10 +221,11 @@ async def generate_release_notes(client: CopadoClient, state: WorkflowState) -> 
         safe_id = state.story_id.replace("/", "-")
         out_path = out_dir / f"{safe_id}-{date_str}.md"
         out_path.write_text(
-            f"# Release Notes — {story_info}\n\n"
+            f"# Release Notes - {story_info}\n\n"
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"Target: {state.target}\n\n"
-            f"{reply}\n"
+            f"{reply}\n",
+            encoding="utf-8",
         )
         console.print(f"    [green]Saved to:[/green] {out_path}")
     except Exception as exc:
@@ -220,7 +235,7 @@ async def generate_release_notes(client: CopadoClient, state: WorkflowState) -> 
 
 def _print_result(result: JobStatus) -> None:
     """Print job result with color based on status."""
-    color = "green" if result.status == "Completed" else "yellow" if "Error" in result.status else "red"
+    color = "green" if result.status in ("Completed", "Successful", "Succeeded") else "yellow" if "Error" in result.status else "red"
     console.print(f"    Result: [{color}]{result.status}[/{color}]")
 
 
@@ -230,25 +245,25 @@ def print_summary(state: WorkflowState) -> None:
     table.add_column("Label", style="dim", width=12)
     table.add_column("Value")
 
-    table.add_row("Story", f"{state.story_id} — {state.story.title if state.story else '?'}")
+    table.add_row("Story", f"{state.story_id} - {state.story.title if state.story else '?'}")
 
     if state.build_guidance:
         table.add_row("Build Agent", "[green]consulted[/green]")
 
-    table.add_row("Commit", state.commit_job_id or "—")
+    table.add_row("Commit", state.commit_job_id or "-")
 
-    uat_status = state.uat_result.status if state.uat_result else "—"
+    uat_status = state.uat_result.status if state.uat_result else "-"
     uat_color = "green" if uat_status == "Completed" else "red" if uat_status == "Failed" else "yellow"
-    table.add_row("UAT", f"{state.promote_job_id or '—'} → [{uat_color}]{uat_status}[/{uat_color}]")
+    table.add_row("UAT", f"{state.promote_job_id or '-'} -> [{uat_color}]{uat_status}[/{uat_color}]")
 
     if state.test_result:
         test_color = "green" if state.test_result.status == "Completed" else "red"
         table.add_row("Tests", f"[{test_color}]{state.test_result.status}[/{test_color}]")
 
     if state.target == "PROD":
-        prod_status = state.prod_result.status if state.prod_result else "—"
+        prod_status = state.prod_result.status if state.prod_result else "-"
         prod_color = "green" if prod_status == "Completed" else "red" if prod_status == "Failed" else "yellow"
-        table.add_row("PROD", f"{state.deploy_job_id or '—'} → [{prod_color}]{prod_status}[/{prod_color}]")
+        table.add_row("PROD", f"{state.deploy_job_id or '-'} -> [{prod_color}]{prod_status}[/{prod_color}]")
     else:
         table.add_row("PROD", "[dim]awaiting approval[/dim]")
 

@@ -43,12 +43,14 @@ story_app = typer.Typer(help="User story management")
 workflow_app = typer.Typer(help="Orchestrated deployment workflows")
 test_app = typer.Typer(help="CRT test execution")
 workspace_app = typer.Typer(help="Copado AI workspace management")
+env_app = typer.Typer(help="Environment management")
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(story_app, name="story")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(test_app, name="test")
 app.add_typer(workspace_app, name="workspace")
+app.add_typer(env_app, name="env")
 
 SERVICE = "copado-genie"
 
@@ -70,6 +72,14 @@ def _get_workspace_id() -> str:
     return (
         os.environ.get("COPADO_WORKSPACE_ID", "")
         or keyring.get_password(SERVICE, "workspace_id")
+        or ""
+    )
+
+
+def _get_story_id() -> str:
+    return (
+        os.environ.get("COPADO_STORY", "")
+        or keyring.get_password(SERVICE, "story_id")
         or ""
     )
 
@@ -148,7 +158,7 @@ def auth_status():
 @auth_app.command("logout")
 def auth_logout():
     """Remove stored credentials."""
-    for key in ("pak", "org_id", "region", "workspace_id", "cicd_url", "sf_token"):
+    for key in ("pak", "org_id", "region", "workspace_id", "cicd_url", "sf_token", "story_id"):
         try:
             keyring.delete_password(SERVICE, key)
         except keyring.errors.PasswordDeleteError:
@@ -164,7 +174,8 @@ def auth_logout():
 def story_set(
     id: Annotated[str, typer.Option("--id", help="User story ID, e.g. US-1234")]
 ):
-    """Bind the active user story for the current session."""
+    """Bind the active user story (persists across CLI invocations)."""
+    keyring.set_password(SERVICE, "story_id", id)
     os.environ["COPADO_STORY"] = id
     console.print(f"Active story: [bold]{id}[/bold]")
 
@@ -174,7 +185,7 @@ def story_show(
     id: Annotated[Optional[str], typer.Option("--id", help="Story Name or Id")] = None,
 ):
     """Show a user story's details from Copado."""
-    story_id = id or os.environ.get("COPADO_STORY")
+    story_id = id or _get_story_id()
     if not story_id:
         console.print("No story set. Run: copado-genie story set --id US-xxxx")
         raise typer.Exit(code=1)
@@ -182,10 +193,12 @@ def story_show(
     async def _run():
         async with CopadoClient(_config()) as client:
             s = await client.get_user_story(story_id)
+            env_name = await client.get_environment_name(s.environment)
             console.print(f"[bold]{story_id}[/bold] — {s.title}")
             console.print(f"  ID          : {s.id}")
             console.print(f"  Project     : {s.project}")
-            console.print(f"  Environment : {s.environment}")
+            console.print(f"  Environment : {env_name}")
+            console.print(f"  Status      : {s.status}")
             console.print(f"  Promote     : {'Yes' if s.ready_to_promote else 'No'}")
 
     asyncio.run(_run())
@@ -204,6 +217,73 @@ def story_create(
             console.print(f"  ID          : {s.id}")
             console.print(f"  Title       : {s.title}")
             console.print(f"  Project     : {s.project}")
+
+    asyncio.run(_run())
+
+
+@story_app.command("update")
+def story_update(
+    id: Annotated[Optional[str], typer.Option("--id", help="Story Name or Id")] = None,
+    env: Annotated[Optional[str], typer.Option("--env", help="Environment name, e.g. Dev2-SFP")] = None,
+):
+    """Update a user story's fields (e.g. set environment)."""
+    story_id = id or _get_story_id()
+    if not story_id:
+        console.print("[red]Provide --id or run: copado-genie story set --id US-xxxx[/red]")
+        raise typer.Exit(code=1)
+
+    if not env:
+        console.print("[red]Provide at least one field to update, e.g. --env Dev2-SFP[/red]")
+        raise typer.Exit(code=1)
+
+    async def _run():
+        async with CopadoClient(_config()) as client:
+            sf_id = story_id
+            # Resolve name to SF Id if needed
+            if not story_id.startswith("a"):
+                data = await client._soql(
+                    f"SELECT Id FROM copado__User_Story__c WHERE Name = '{story_id}' LIMIT 1"
+                )
+                records = data.get("records", [])
+                if not records:
+                    console.print(f"[red]Story '{story_id}' not found[/red]")
+                    raise typer.Exit(code=1)
+                sf_id = records[0]["Id"]
+
+            fields = {}
+            if env:
+                env_id = await client.resolve_environment(env)
+                # Find the org credential linked to this environment
+                org_data = await client._soql(
+                    f"SELECT Id, Name FROM copado__Org__c "
+                    f"WHERE copado__Environment__c = '{env_id}' LIMIT 1"
+                )
+                org_records = org_data.get("records", [])
+                if not org_records:
+                    console.print(f"[red]No org credential found for environment '{env}'. "
+                                  f"Link one in Copado UI first.[/red]")
+                    raise typer.Exit(code=1)
+
+                org_cred_id = org_records[0]["Id"]
+                fields["copado__Environment__c"] = env_id
+                fields["copado__Org_Credential__c"] = org_cred_id
+                console.print(f"  Environment : {env} ({env_id})")
+                console.print(f"  Org Cred    : {org_records[0]['Name']} ({org_cred_id})")
+
+            try:
+                await client.update_story_status(sf_id, fields)
+                console.print(f"[green]Updated {story_id}[/green]")
+            except Exception as e:
+                err = str(e)
+                if "FIELD_CUSTOM_VALIDATION_EXCEPTION" in err or "credential" in err.lower():
+                    console.print(
+                        "[red]Copado rejected the update — the environment's org credential "
+                        "must be linked first. Use the Copado UI to set the initial environment, "
+                        "then manage the story via CLI.[/red]"
+                    )
+                else:
+                    console.print(f"[red]Update failed: {err}[/red]")
+                raise typer.Exit(code=1)
 
     asyncio.run(_run())
 
@@ -246,9 +326,13 @@ def workflow_run(
     metadata: Annotated[Optional[str], typer.Option("--metadata", help="JSON list of metadata")] = None,
     test_suite: Annotated[Optional[str], typer.Option("--test-suite", help="CRT test suite ID")] = None,
     project: Annotated[Optional[str], typer.Option("--project", help="Copado project ID")] = None,
+    auto_approve: Annotated[bool, typer.Option("--auto-approve", help="Skip PROD approval prompt (CI/CD only)")] = False,
 ):
     """
-    Run the full DevOps pipeline: dev1 → UAT → (approval) → PROD.
+    Run the full DevOps pipeline: dev -> INT -> UAT -> (approval) -> PROD.
+
+    Requires interactive approval before deploying to Production.
+    Use --auto-approve only in automated CI/CD pipelines.
 
     Examples:
       copado-genie workflow run --story US-1234 --to UAT
@@ -265,6 +349,7 @@ def workflow_run(
         metadata=json.loads(metadata) if metadata else None,
         test_suite_id=test_suite,
         project_id=project,
+        auto_approve=auto_approve,
     )
 
     asyncio.run(run_workflow(_config(), opts))
@@ -279,7 +364,7 @@ def promote(
     validate: Annotated[bool, typer.Option("--validate", help="Validate only (dry run)")] = False,
 ):
     """Promote a story to an environment (standalone)."""
-    story_id = story or os.environ.get("COPADO_STORY")
+    story_id = story or _get_story_id()
     if not story_id:
         console.print("[red]Provide --story or run: copado-genie story set --id US-xxxx[/red]")
         raise typer.Exit(code=1)
@@ -309,7 +394,7 @@ def deploy_cmd(
     story: Annotated[Optional[str], typer.Option("--story", help="Story ID")] = None,
 ):
     """Deploy a story to an environment (standalone)."""
-    story_id = story or os.environ.get("COPADO_STORY")
+    story_id = story or _get_story_id()
     if not story_id:
         console.print("[red]Provide --story or run: copado-genie story set --id US-xxxx[/red]")
         raise typer.Exit(code=1)
@@ -348,7 +433,7 @@ def status(
         """Return the job ID — explicit or looked up from the active story."""
         if job:
             return job
-        story_id = os.environ.get("COPADO_STORY")
+        story_id = _get_story_id()
         if not story_id:
             console.print("[red]Provide --job <job-id> or set a story first: copado-genie story set --id US-xxxx[/red]")
             raise typer.Exit(code=1)
@@ -386,7 +471,7 @@ def commit(
     story: Annotated[Optional[str], typer.Option("--story", help="Story ID")] = None,
 ):
     """Commit metadata for a story (standalone — use 'workflow run' for full pipeline)."""
-    story_id = story or os.environ.get("COPADO_STORY")
+    story_id = story or _get_story_id()
     if not story_id:
         console.print("[red]Provide --story or run: copado-genie story set --id US-xxxx[/red]")
         raise typer.Exit(code=1)
@@ -400,6 +485,10 @@ def commit(
                 {"type": "CustomField", "fullName": "Copado_Demo__c.Description__c"},
             ]
             job_id = await client.commit(story_id, meta)
+            if job_id is None:
+                console.print("[yellow]Commit requires Copado UI (Git snapshot reference).[/yellow]")
+                console.print("[dim]Commit via the Copado UI first, then manage promotions via CLI.[/dim]")
+                return
             console.print(f"  Job: {job_id}")
             from orchestrator.poll import poll_until_complete
             result = await poll_until_complete(client, job_id)
@@ -508,6 +597,34 @@ def test_results(
     asyncio.run(_run())
 
 
+# ── environment commands ──────────────────────────────────────────
+
+@env_app.command("list")
+def env_list():
+    """List Copado pipeline environments."""
+    async def _run():
+        async with CopadoClient(_config()) as client:
+            envs = await client.list_environments()
+            if not envs:
+                console.print("[yellow]No environments found.[/yellow]")
+                return
+            table = Table(title="Pipeline Environments")
+            table.add_column("ID", style="cyan")
+            table.add_column("Name", style="bold")
+            table.add_column("Type")
+            table.add_column("Platform")
+            for e in envs:
+                table.add_row(
+                    e.get("Id", "?"),
+                    e.get("Name", "?"),
+                    e.get("copado__Type__c", "—"),
+                    e.get("copado__Platform__c", "—"),
+                )
+            console.print(table)
+
+    asyncio.run(_run())
+
+
 # ── workspace commands ────────────────────────────────────────────
 
 @workspace_app.command("list")
@@ -567,7 +684,7 @@ def release_notes(
     If --output is specified, saves to that file.
     Otherwise prints to terminal and saves to release-notes/<story>-<date>.md.
     """
-    story_id = story or os.environ.get("COPADO_STORY")
+    story_id = story or _get_story_id()
     if not story_id:
         console.print("[red]Provide --story or run: copado-genie story set --id US-xxxx[/red]")
         raise typer.Exit(code=1)

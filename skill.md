@@ -50,6 +50,7 @@ Before any workflow:
 | `copado-genie ai ask --agent build "..."` | Build agent — metadata guidance |
 | `copado-genie ai ask --agent operate "..."` | Operate agent — release notes, docs |
 | `copado-genie release-notes` | Generate and save release notes to file |
+| `copado-genie env list` | List pipeline environments (IDs + names) |
 
 Prefer **`workflow run`** for end-to-end delivery so the **orchestrator** controls step order. Use individual commands only when the user asks to debug a single step.
 

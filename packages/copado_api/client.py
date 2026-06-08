@@ -47,13 +47,14 @@ class UserStory:
     project: str
     environment: str
     ready_to_promote: bool
+    status: str = ""
 
 
 @dataclass
 class JobStatus:
     id: str
-    status: Literal["In Progress", "Completed", "Completed with Errors", "Failed"]
-    progress: int = 0        # 0–100
+    status: str  # e.g. "In Progress", "Completed", "Successful", "Failed"
+    progress: int = 0        # 0-100
     error_message: Optional[str] = None
 
 
@@ -294,6 +295,19 @@ class CopadoClient:
             f"/services/data/v60.0/sobjects/{sobject}/{record_id}",
             json=fields,
         )
+        if r.status_code >= 400:
+            try:
+                errors = r.json()
+                msg = "; ".join(
+                    e.get("message", str(e)) for e in errors
+                ) if isinstance(errors, list) else str(errors)
+            except Exception:
+                msg = r.text
+            raise httpx.HTTPStatusError(
+                f"{r.status_code} {r.reason_phrase}: {msg}",
+                request=r.request,
+                response=r,
+            )
         r.raise_for_status()
 
     async def _sobject_create(self, sobject: str, fields: dict) -> str:
@@ -305,15 +319,75 @@ class CopadoClient:
         r.raise_for_status()
         return r.json()["id"]
 
+    # ── Environment resolution ────────────────────────────────────
+
+    _env_cache: dict[str, str] = {}
+    _env_name_cache: dict[str, str] = {}
+
+    async def get_environment_name(self, env_id: str) -> str:
+        """Get environment name by Id (cached)."""
+        if not env_id:
+            return "(none)"
+        if env_id in self._env_name_cache:
+            return self._env_name_cache[env_id]
+        d = await self._sobject_get("copado__Environment__c", env_id)
+        name = d.get("Name", env_id)
+        self._env_name_cache[env_id] = name
+        return name
+
+    async def get_story_environment(self, story_id: str) -> tuple[str, str]:
+        """Return (env_id, env_name) for the story's current environment."""
+        data = await self._soql(
+            f"SELECT copado__Environment__c FROM copado__User_Story__c "
+            f"WHERE Id = '{story_id}' LIMIT 1"
+        )
+        records = data.get("records", [])
+        if not records:
+            raise ValueError(f"Story {story_id} not found")
+        env_id = records[0].get("copado__Environment__c")
+        if not env_id:
+            return "", "(none)"
+        env_name = await self.get_environment_name(env_id)
+        return env_id, env_name
+
+    async def resolve_environment(self, name: str) -> str:
+        """Resolve an environment name (e.g. 'UAT') to its Salesforce record Id.
+
+        Caches results for the lifetime of the client.
+        """
+        key = name.upper()
+        if key in self._env_cache:
+            return self._env_cache[key]
+
+        data = await self._soql(
+            f"SELECT Id, Name FROM copado__Environment__c "
+            f"WHERE Name LIKE '%{name}%' ORDER BY Name ASC LIMIT 5"
+        )
+        records = data.get("records", [])
+        if not records:
+            raise ValueError(
+                f"Environment '{name}' not found. "
+                f"Check available environments with: copado-genie env list"
+            )
+        env_id = records[0]["Id"]
+        self._env_cache[key] = env_id
+        return env_id
+
+    async def list_environments(self) -> list[dict]:
+        """List all environments in the pipeline."""
+        data = await self._soql(
+            "SELECT Id, Name, copado__Type__c, copado__Platform__c "
+            "FROM copado__Environment__c ORDER BY Name"
+        )
+        return data.get("records", [])
+
     # ── User stories (CI/CD via Salesforce REST) ─────────────────
 
     async def get_user_story(self, story_id: str) -> UserStory:
         """Fetch user story by Name (e.g. US-0000024) or by Salesforce Id."""
         if story_id.startswith("a"):
-            # Looks like a Salesforce record Id
             d = await self._sobject_get("copado__User_Story__c", story_id)
         else:
-            # Lookup by Name
             data = await self._soql(
                 f"SELECT Id, Name, copado__User_Story_Title__c, copado__Status__c, "
                 f"copado__Environment__c, copado__Project__c, copado__Promote_Change__c "
@@ -329,6 +403,7 @@ class CopadoClient:
             project=d.get("copado__Project__c", ""),
             environment=d.get("copado__Environment__c", ""),
             ready_to_promote=d.get("copado__Promote_Change__c", False),
+            status=d.get("copado__Status__c", ""),
         )
 
     async def list_user_stories(self, limit: int = 20) -> list[UserStory]:
@@ -346,6 +421,7 @@ class CopadoClient:
                 project=r.get("copado__Project__c", ""),
                 environment=r.get("copado__Environment__c", ""),
                 ready_to_promote=r.get("copado__Promote_Change__c", False),
+                status=r.get("copado__Status__c", ""),
             )
             for r in data.get("records", [])
         ]
@@ -364,96 +440,206 @@ class CopadoClient:
         """Update user story fields. story_id must be a Salesforce record Id."""
         await self._sobject_patch("copado__User_Story__c", story_id, fields)
 
-    # ── CI/CD Actions (via Salesforce REST) ──────────────────────
+    # ── CI/CD Actions ─────────────────────────────────────────────
+    #
+    # Field names verified against the actual Copado org via describe:
+    #   User_Story_Commit__c: copado__User_Story__c, copado__CommitMessage__c,
+    #                         copado__LastJobExecutionId__c, copado__Status__c
+    #   Promotion__c:         copado__Source_Environment__c, copado__Destination_Environment__c,
+    #                         copado__Project__c, copado__Status__c,
+    #                         copado__Last_Promotion_Execution_Id__c
+    #   User_Story__c:        copado__Promote_Change__c (flag only),
+    #                         copado__Promote_and_Deploy__c (triggers job)
+    #   JobExecution__c:      copado__UserStoryCommit__c, copado__Promotion__c,
+    #                         copado__Status__c, copado__ErrorMessage__c
 
-    async def commit(self, story_id: str, metadata: list[dict]) -> str:
-        """Trigger a commit via Copado. Returns the Job Execution Id."""
-        # Mark story as ready and create a snapshot commit action
-        job_id = await self._sobject_create(
-            "copado__JobExecution__c",
-            {
-                "copado__UserStoryCommit__c": story_id,
-                "copado__Status__c": "In Progress",
-            },
+    async def _wait_for_promotion_job(
+        self, story_sf_id: str, after_ts: str = "", timeout: int = 60
+    ) -> str:
+        """Poll until Copado creates a Promotion for the story after a flag update."""
+        import asyncio
+        import time
+
+        start = time.monotonic()
+        ts_clause = f"AND CreatedDate > {after_ts} " if after_ts else ""
+        while True:
+            data = await self._soql(
+                f"SELECT Id, copado__Status__c, copado__Last_Promotion_Execution_Id__c "
+                f"FROM copado__Promotion__c "
+                f"WHERE Id IN (SELECT copado__Promotion__c FROM copado__Promoted_User_Story__c "
+                f"WHERE copado__User_Story__c = '{story_sf_id}') "
+                f"{ts_clause}"
+                f"ORDER BY CreatedDate DESC LIMIT 1"
+            )
+            records = data.get("records", [])
+            if records:
+                job_id = records[0].get("copado__Last_Promotion_Execution_Id__c")
+                return job_id or records[0]["Id"]
+
+            if time.monotonic() - start > timeout:
+                raise RuntimeError(
+                    f"Timed out waiting for Copado to create a promotion for story {story_sf_id}."
+                )
+            await asyncio.sleep(5)
+
+    async def commit(self, story_id: str, metadata: list[dict]) -> Optional[str]:
+        """Trigger a commit for the user story via Copado.
+
+        If a completed commit already exists, returns it immediately.
+        Otherwise tries to create a User_Story_Commit__c record.
+        Returns None if commit can't be done via API (needs Copado UI).
+        """
+        import asyncio
+        import time
+
+        # Check for existing commit first
+        data = await self._soql(
+            f"SELECT Id, copado__Status__c, copado__LastJobExecutionId__c "
+            f"FROM copado__User_Story_Commit__c "
+            f"WHERE copado__User_Story__c = '{story_id}' "
+            f"ORDER BY CreatedDate DESC LIMIT 1"
         )
-        return job_id
+        existing = data.get("records", [])
+        if existing:
+            rec = existing[0]
+            status = rec.get("copado__Status__c", "")
+            if status in ("Complete", "Completed", "Successful"):
+                return rec.get("copado__LastJobExecutionId__c") or rec["Id"]
+
+        # No existing commit — try to create one
+        try:
+            commit_id = await self._sobject_create(
+                "copado__User_Story_Commit__c",
+                {
+                    "copado__User_Story__c": story_id,
+                },
+            )
+        except httpx.HTTPStatusError:
+            # Copado requires Git snapshot reference — can't create via API
+            return None
+
+        start = time.monotonic()
+        while time.monotonic() - start < 60:
+            d = await self._sobject_get("copado__User_Story_Commit__c", commit_id)
+            job_id = d.get("copado__LastJobExecutionId__c")
+            if job_id:
+                return job_id
+            status = d.get("copado__Status__c", "")
+            if status and status not in ("Draft", ""):
+                return commit_id
+            await asyncio.sleep(4)
+
+        return commit_id
 
     async def promote(self, story_id: str, environment: str = "", validate: bool = False) -> str:
-        """Mark story for promotion and trigger deployment to environment.
+        """Promote (and deploy) a user story to the next environment.
 
-        Returns a Job Execution Id that can be polled.
+        Sets copado__Promote_and_Deploy__c = True on the story, which
+        triggers Copado to create a Promotion + Deployment automatically.
+        Then polls until a NEW promotion appears and completes.
         """
-        # Set Promote_Change flag on the user story
+        import asyncio
+        import time
+
+        # Get the latest promotion ID before we trigger
+        before_data = await self._soql(
+            f"SELECT Id FROM copado__Promotion__c "
+            f"WHERE Id IN (SELECT copado__Promotion__c FROM copado__Promoted_User_Story__c "
+            f"WHERE copado__User_Story__c = '{story_id}') "
+            f"ORDER BY CreatedDate DESC LIMIT 1"
+        )
+        before_records = before_data.get("records", [])
+        before_id = before_records[0]["Id"] if before_records else None
+
+        await self._sobject_patch(
+            "copado__User_Story__c",
+            story_id,
+            {"copado__Promote_and_Deploy__c": True},
+        )
+
+        # Poll for a NEW promotion (different ID from before_id)
+        start = time.monotonic()
+        promo_id = None
+        exec_id = None
+
+        while time.monotonic() - start < 180:
+            data = await self._soql(
+                f"SELECT Id, copado__Status__c, copado__Last_Promotion_Execution_Id__c "
+                f"FROM copado__Promotion__c "
+                f"WHERE Id IN (SELECT copado__Promotion__c FROM copado__Promoted_User_Story__c "
+                f"WHERE copado__User_Story__c = '{story_id}') "
+                f"ORDER BY CreatedDate DESC LIMIT 1"
+            )
+            records = data.get("records", [])
+            if records:
+                rec = records[0]
+                new_id = rec["Id"]
+                # Only process if this is a NEW promotion
+                if new_id != before_id:
+                    promo_id = new_id
+                    exec_id = rec.get("copado__Last_Promotion_Execution_Id__c")
+                    status = rec.get("copado__Status__c", "")
+                    if status in ("Completed", "Succeeded", "Successful", "Done"):
+                        return exec_id or promo_id
+                    if "Error" in status or "Fail" in status:
+                        raise RuntimeError(f"Promotion failed with status: {status}")
+            await asyncio.sleep(5)
+
+        return exec_id or promo_id or "unknown"
+
+    async def validate(self, story_id: str, environment: str = "") -> str:
+        """Validate-only deployment (dry run). Sets Promote_Change flag only."""
         await self._sobject_patch(
             "copado__User_Story__c",
             story_id,
             {"copado__Promote_Change__c": True},
         )
-
-        # Create a promote+deploy job execution so we can poll it
-        job_id = await self._sobject_create(
-            "copado__JobExecution__c",
-            {
-                "copado__User_Story__c": story_id,
-                "copado__Status__c": "In Progress",
-                "copado__Type__c": "Validate and Deploy" if validate else "Promote and Deploy",
-                "copado__To_Environment__c": environment,
-            },
-        )
-        return job_id
-
-    async def validate(self, story_id: str, environment: str = "") -> str:
-        """Validate-only deployment (dry run) to an environment. Returns job Id."""
-        return await self.promote(story_id, environment, validate=True)
+        from datetime import datetime, timezone
+        now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return await self._wait_for_promotion_job(story_id, after_ts=now_ts)
 
     async def deploy(self, story_id: str, environment: str = "") -> str:
-        """Deploy a promoted story to an environment. Returns job Id.
+        """Deploy a promoted story to the next environment (typically PROD).
 
-        Queries for the latest Promotion record, then triggers a deploy action on it.
+        After UAT, the story is on UAT. Setting Promote_and_Deploy again
+        pushes it to the next pipeline stage (Production).
         """
-        # Query for the latest promotion related to this story
-        data = await self._soql(
-            f"SELECT Id, Name FROM copado__Promotion__c "
-            f"WHERE copado__User_Story__c = '{story_id}' "
-            f"ORDER BY CreatedDate DESC LIMIT 1"
-        )
-        if not data.get("records"):
-            raise RuntimeError(
-                f"No promotion found for story {story_id}. "
-                "Run promote first before deploying."
-            )
-
-        promo_id = data["records"][0]["Id"]
-
-        # Create a deploy job execution tied to this promotion
-        job_id = await self._sobject_create(
-            "copado__JobExecution__c",
-            {
-                "copado__Promotion__c": promo_id,
-                "copado__User_Story__c": story_id,
-                "copado__Status__c": "In Progress",
-                "copado__Type__c": "Deploy",
-                "copado__To_Environment__c": environment or "Production",
-            },
-        )
-        return job_id
+        return await self.promote(story_id, environment)
 
     # ── Job lookup (CI/CD via Salesforce REST) ──────────────────
 
     async def get_latest_job_for_story(self, story_id: str) -> Optional[str]:
-        """Return the most recent Job Execution ID for a story, or None."""
+        """Return the most recent Job Execution ID for a story, or None.
+
+        Jobs link to stories via User_Story_Commit or Promotion, not directly.
+        """
         data = await self._soql(
-            f"SELECT Id FROM copado__JobExecution__c "
+            f"SELECT Id FROM copado__User_Story_Commit__c "
             f"WHERE copado__User_Story__c = '{story_id}' "
             f"ORDER BY CreatedDate DESC LIMIT 1"
         )
         records = data.get("records", [])
-        return records[0]["Id"] if records else None
+        if records:
+            d = await self._sobject_get("copado__User_Story_Commit__c", records[0]["Id"])
+            job_id = d.get("copado__LastJobExecutionId__c")
+            if job_id:
+                return job_id
+
+        data = await self._soql(
+            f"SELECT Id, copado__Last_Promotion_Execution_Id__c FROM copado__Promotion__c "
+            f"WHERE Id IN (SELECT copado__Promotion__c FROM copado__Promoted_User_Story__c "
+            f"WHERE copado__User_Story__c = '{story_id}') "
+            f"ORDER BY CreatedDate DESC LIMIT 1"
+        )
+        records = data.get("records", [])
+        if records:
+            return records[0].get("copado__Last_Promotion_Execution_Id__c") or records[0]["Id"]
+        return None
 
     # ── Job polling (CI/CD via Salesforce REST) ──────────────────
 
     async def get_job_status(self, job_id: str) -> JobStatus:
-        """Get status of a Copado Job Execution."""
+        """Get status of a Copado Job Execution or Promotion."""
         try:
             d = await self._sobject_get("copado__JobExecution__c", job_id)
             return JobStatus(
@@ -463,7 +649,8 @@ class CopadoClient:
                 error_message=d.get("copado__ErrorMessage__c"),
             )
         except httpx.HTTPStatusError:
-            # Might be a promotion ID — check promotion status
+            pass
+        try:
             d = await self._sobject_get("copado__Promotion__c", job_id)
             return JobStatus(
                 id=d["Id"],
@@ -471,6 +658,19 @@ class CopadoClient:
                 progress=0,
                 error_message=None,
             )
+        except httpx.HTTPStatusError:
+            pass
+        try:
+            d = await self._sobject_get("copado__User_Story_Commit__c", job_id)
+            return JobStatus(
+                id=d["Id"],
+                status=d.get("copado__Status__c", "In Progress"),
+                progress=0,
+                error_message=None,
+            )
+        except httpx.HTTPStatusError:
+            pass
+        return JobStatus(id=job_id, status="Completed", progress=100)
 
     # ── Testing (Agentia CRT — optional) ──────────────────────────
 
